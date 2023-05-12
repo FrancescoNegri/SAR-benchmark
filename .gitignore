@@ -1,3 +1,7 @@
-artifacts/
+snippets/
 baselines/
 templates/
+figures/
+docs/*
+!docs/*.tex
+*.asv
