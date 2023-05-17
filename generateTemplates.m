@@ -1,114 +1,141 @@
-function generateTemplates(tankObj, animalName, blockIdx, channelIdx, maxStimDuration, nTemplates, isBlanked, graphicsObj)
+function generateTemplates(tankObj, animalName, blockIdx, channelIdx, nTemplates, graphicsObj)
 %GENERATETEMPLATES Summary of this function goes here
 %   Detailed explanation goes here
-    
-    %% Check input parameters
-    if nargin < 4
-        throw(MException('SFA:NotEnoughParameters', 'The parameters tankObj, animalName, blockIdx and channelIdx are required.'));
-    end
 
-    if nargin < 5
-        maxStimDuration = 25e-3;
-    end
+%% Check input parameters
+if nargin < 4
+    throw(MException('SFA:NotEnoughParameters', 'The parameters tankObj, animalName, blockIdx and channelIdx are required.'));
+end
 
-    if nargin < 6
-        nTemplates = false;
-    end
+if nargin < 5
+    nTemplates = false;
+end
 
-    if nargin < 7
-        isBlanked = false;
-    end
+if nargin < 6
+    graphicsObj = false;
+end
 
-    if nargin < 8
-        graphicsObj = false;
-    end
+if ~isgraphics(graphicsObj, 'figure') && ~isgraphics(graphicsObj, 'tiledlayout')  && ~isgraphics(graphicsObj, 'axes') && graphicsObj ~= false && graphicsObj ~= true
+    throw(MException('SFA:WrongTypeParameter', 'The parameter graphicsObj is not a figure, a tiledlayout or axes.'));
+end
 
-    if ~isgraphics(graphicsObj, 'figure') && ~isgraphics(graphicsObj, 'tiledlayout')  && ~isgraphics(graphicsObj, 'axes') && graphicsObj ~= false && graphicsObj ~= true
-        throw(MException('SFA:WrongTypeParameter', 'The parameter graphicsObj is not a figure, a tiledlayout or axes.'));
-    end
-    
-    %% Retrieve Animal, Block and Channel objects
-    animalObj = '';
+%% Retrieve Animal, Block and Channel objects
+animalObj = getChildObj(tankObj, animalName);
+blockObj = getChildObj(animalObj, blockIdx);
 
-    for idx=1:length(tankObj.Children)
-        if strcmp(tankObj.Children(idx).Name, animalName)
-            animalObj = tankObj.Children(idx);
-        end
-    end
-    
-    if isempty(animalObj)
-        throw(MException('SFA:AnimalNotFound', sprintf('No animal with the specified name: %s', animalName)));
-    end
-    
-    blockObj = animalObj.Children(blockIdx);
-    
-    data = blockObj{'raw', channelIdx, :};
-    data = data{1};
+data = blockObj{'raw', channelIdx, :};
+data = data{1};
 
-    %% Load and process stimulation data
-    stimPath = fullfile(blockObj.Output, blockObj.Name, 'StimData', 'Stim_Stim_Events.mat');
-    stim = load(stimPath);
-    stim = stim.data(2:end, :);
-    
-    blankingNSamples = stim(:, 11);
-    stimChannelId = unique(stim(:, 2));
-    
-    if length(stimChannelId) > 1
-        stimChannelId = stimChannelId(1);
-        warning('SFA:MultipleStimulatedChannels', 'There are multiple channels which are stimulated. Selected channel: %d', stimChannelId);
-    end
-    
-    IAI = getIEI(stim(stim(:, 2) == stimChannelId, 4));
-    
-    stim = round(stim(stim(:, 2) == stimChannelId, 4) * blockObj.SampleRate);
+%% Load and process stimulation data
+[stim, blankingNSamples] = getStim(blockObj);
+blankingNSamples = blankingNSamples + 5; % Arbitrary increase in the computed blanking window
 
-    %% Isolate, plot and save templates
-    outputPath = fullfile('./templates', strcat(tankObj.Name, '_', animalObj.Name ,'_B', num2str(blockIdx), '_C', num2str(channelIdx)));
-    if ~exist(outputPath, 'dir')
-        mkdir(outputPath);
-    end
-    
-    save(fullfile(outputPath, 'stim'), 'stim');
-    stim = stim(randperm(length(stim)));
+stim = round(stim * blockObj.SampleRate);
+IAI = getIEI(stim);
 
-    if graphicsObj ~= false
-        if graphicsObj == true
-            figure();
-        elseif isgraphics(graphicsObj, 'figure')
-            figure(graphicsObj.Number)
-        elseif isgraphics(graphicsObj, 'tiledlayout')
-            nexttile();
-        end
+%% Compute the baseline
+[~, baselinePercentiles] = getBaselineFromStim(data, stim, blockObj.SampleRate, 10e-3, 0.5e-3, [25, 75]);
+baselineBottom = baselinePercentiles(1);
+baselineTop = baselinePercentiles(end);
 
-        hold('on');
-        title(channelIdx);
-        xlabel('Time (ms)');
-    end
-    
-    if nTemplates == false
-        nTemplates = length(stim);
-    end
-    
-    for idx=1:nTemplates
-        stimDuration = maxStimDuration;
-    
-        if idx < length(IAI) && IAI(idx) < maxStimDuration
-                stimDuration = IAI(idx);
-        end
+%% Compute duration for each stimulus
+selectedStim = false(1, length(stim));
+stimNSamples = zeros(1, length(stim));
 
-        if isBlanked
-            stimSamples = blankingNSamples(idx):round(stimDuration * blockObj.SampleRate);
-        else
-            stimSamples = 1:round(stimDuration * blockObj.SampleRate);
-        end
+searchingWindow = 3e-3;
+searchingSamples = 1:round(searchingWindow * blockObj.SampleRate);
 
-        template = data(stim(idx) + stimSamples);
+for idx=1:length(stim)-1
+    flag = false;
+    searchingOffset = blankingNSamples(idx);
+    
+    while flag == false
+        searchingVector = data(stim(idx) + searchingSamples - 1 + searchingOffset);
         
-        if graphicsObj ~= false
-            plot(stimSamples ./ blockObj.SampleRate * 1e3, template);
+        if median(searchingVector) > baselineBottom && median(searchingVector) < baselineTop
+            flag = true;
+        else
+            searchingOffset = searchingOffset + 1;
         end
-
-        save(fullfile(outputPath, getRandomFilename(8)), 'template');
     end
+    
+    searchingOffset = searchingOffset + length(searchingSamples);
+    
+    if searchingOffset < IAI(idx)
+        selectedStim(idx) = true;
+        stimNSamples(idx) = searchingOffset;
+    end
+end
+
+stim = stim(selectedStim);
+stimNSamples = stimNSamples(selectedStim);
+
+outputPath = fullfile('./templates', strcat(tankObj.Name, '_', animalObj.Name ,'_B', num2str(blockIdx), '_C', num2str(channelIdx)));
+if ~exist(outputPath, 'dir')
+    mkdir(outputPath);
+end
+
+save(fullfile(outputPath, '.stim.mat'), 'stim');
+
+%% Isolate, smooth, plot and save templates
+paddingBefore = 100;
+paddingAfter = 100;
+smoothingFrequency = 100;
+
+permIdxs = randperm(length(stim));
+stim = stim(permIdxs);
+stimNSamples = stimNSamples(permIdxs);
+
+if graphicsObj ~= false
+    if graphicsObj == true
+        figure();
+    elseif isgraphics(graphicsObj, 'figure')
+        figure(graphicsObj.Number)
+    elseif isgraphics(graphicsObj, 'tiledlayout')
+        nexttile();
+    end
+    
+    hold('on');
+    title(channelIdx);
+    xlabel('Time (ms)');
+end
+
+if nTemplates == false
+    nTemplates = length(stim);
+end
+
+for idx=1:nTemplates
+    stimSamples = (1:(paddingBefore+stimNSamples(idx)+paddingAfter)) - paddingBefore;
+    
+    stimSamples = stim(idx) + stimSamples - 1;
+    template = data(stimSamples);
+    template((paddingBefore+stimNSamples(idx))+1:end) = flip(template(((paddingBefore+stimNSamples(idx))+1:end) - paddingAfter));
+    
+    smoothedTemplate = lowpass(template, smoothingFrequency, blockObj.SampleRate);
+    smoothedTemplate = smoothedTemplate((1:stimNSamples(idx)) + paddingBefore);
+    
+    stimSamples = 1:stimNSamples(idx);
+    smoothedTemplate(1:blankingNSamples) = template((1:blankingNSamples) + paddingBefore);    % Restore the stimulation shape, preserving the smoothed artifact
+    template = smoothedTemplate;
+    
+    hm = hamming(2*(length(template) - blankingNSamples(idx)));
+    hm = hm((end/2 + 1):end);
+    template((blankingNSamples + 1):end) = template((blankingNSamples + 1):end) .* hm';
+    
+    if graphicsObj ~= false
+        plot((0:1/blockObj.SampleRate:(stimSamples(end)/blockObj.SampleRate - 1/blockObj.SampleRate))*1e3, template);
+    end
+    
+    save(fullfile(outputPath, getRandomFilename(8)), 'template');
+end
+
+if graphicsObj ~= false
+    t0 = 0;
+    y = ylim;
+    y0 = y(1);
+    t1 = max(blankingNSamples) / blockObj.SampleRate * 1e3;
+    y1 = y(2);
+    patch([t0, t1, t1, t0], [y0, y0, y1, y1], [0.8, 0.8, 0.8], 'FaceAlpha', 0.35, 'LineStyle', 'none');
+end
 end
 
