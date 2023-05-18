@@ -9,7 +9,7 @@
 \usepackage{float}
 \setlength\parindent{0pt}
 
-\title{Stimulus Artifacts Rejection Benchmark Tool}
+\title{Stimulus Artifacts Rejection Benchmarking Tool}
 \author{Francesco Negri}
 \date{May 2023}
 
@@ -23,19 +23,46 @@
 The following work about Stimulus Artifacts Rejection from electrophysiological data
 recorded via the Intan system in in-vivo animals relies on a number of crucial assumptions.
 \begin{enumerate}
-    \item A single stimulus is made by two parts with different dynamics:
-          \begin{enumerate}
-              \item A short-lasting saturation of the amplifier described by a peak.
-              \item A long-lasting transient phase with a quasi-exponential behaviour, due
-                    to the discharge of amplifier's capacitors.
-          \end{enumerate}
-    \item Stimulation occurs exclusively in 1 \textit{Channel} for each \textit{Animal}.
-    \item Each \textit{Tank \(>\) Animal \(>\) Block} is characterized by
-          the very same sequence of stimuli.
-    \item Each \textit{Tank \(>\) Animal \(>\) Block \(>\) Channel} is expected to
-          display always the same response over time, as the shape of the stimulus depends
-          on the geometry between the observed channel and the stimulated one. The geometry
-          might also affect the polarity of the stimulus.
+      \item A single stimulus is made by two parts with different dynamics:
+            \begin{enumerate}
+                  \item A short-lasting saturation of the amplifier described by a peak.
+                  \item A long-lasting transient phase with a quasi-exponential behaviour, due
+                        to the discharge of amplifier's capacitors.
+            \end{enumerate}
+      \item Stimulation occurs exclusively in one \textit{Channel} for each \textit{Animal}.
+      \item Each \textit{Tank \(>\) Animal \(>\) Block} is characterized by
+            the very same sequence of stimuli.
+      \item Each \textit{Tank \(>\) Animal \(>\) Block \(>\) Channel} is expected to
+            always display the same response over time, as the shape of the stimulus depends
+            on the geometry between the observed channel and the stimulated one. The geometry
+            might also affect the polarity of the stimulus. \textbf{[REVIEW]}
+      \item The baseline activity observed in a \textit{Channel} tend to remain in the
+            same range during the whole recording.
 \end{enumerate}
+
+\section*{Synthetic Dataset Generation}
+This section aims at providing the reader with an extensive understanding of
+the steps followed to generate a synthetic dataset to test Stimulus Artifact Rejection
+algorithms against.\\
+A synthetic dataset has been preferred with respect to considering
+actual data as it enables a full knowledge of the clean signal, allowing to compute
+performance metrics and compare the different algorithms. In addition, a data-driven
+approach was employed, since it might simulate real situations in a better way than
+a model-based approach, which requires a higher number of assumptions with the increased
+risk of introducing bises.
+
+\subsection*{Extraction of Artifact Templates}
+
+\subsection*{Extraction of Baseline Activity}
+
+\subsection*{Generation of Snippets}
+3xN arrays:
+\begin{itemize}
+      \item First row: stimulus train (0s and 1s)
+      \item Second row: synthetic data
+      \item Third row: clean data to compute metrics
+\end{itemize}
+
+\section*{The Benchmarking Tool}
 
 \end{document}
