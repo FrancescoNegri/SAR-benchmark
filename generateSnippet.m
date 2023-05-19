@@ -21,6 +21,7 @@ dirList = dirList(3:end);
 
 dirIdx = randi([1, length(dirList)]);
 folder = fullfile(dirList(dirIdx).folder, dirList(dirIdx).name);
+fprintf('Selected templates folder: %s\n', dirList(dirIdx).name);
 
 templateList = dir(fullfile(folder));
 templateList = templateList(4:end);     % Avoid .stim.mat file as well
@@ -52,6 +53,17 @@ for idx = 1:length(snippetStim)
     snippet((1:length(template)) + snippetStim(idx)) = template;
 end
 
+%% Pick a random baseline signal load it
+baselineList = dir(fullfile('./baselines'));
+baselineList = baselineList(3:end);
+
+baselineIdx = randi([1, length(baselineList)]);
+fprintf('Selected template: %s\n', baselineList(baselineIdx).name);
+
+load(fullfile(baselineList(baselineIdx).folder, baselineList(baselineIdx).name), 'baseline');
+
+snippet = snippet + baseline;
+
 %% Plot the generated snippet
 if graphicsObj ~= false
     if graphicsObj == true
@@ -69,8 +81,24 @@ if graphicsObj ~= false
     plot(0:1/sampleRate:(snippetDuration - 1/sampleRate), snippet);
 end
 
-% TODO: retrieve random baseline signal and add it to the snippet
-% TODO: save a 3xN array with snippet (templates + baseline), just
-% baseline
+outputPath = fullfile('./snippets');
+if ~exist(outputPath, 'dir')
+    mkdir(outputPath);
+end
+
+%% Save the snippet
+snippet = struct('data', snippet, 'baseline', baseline, 'stim', snippetStim);
+
+choice = questdlg('Do you want to save the current snippet?', 'Saving', 'Yes', 'No', 'Yes');
+
+if strcmp(choice, 'Yes')
+    outputPath = fullfile('./snippets');
+    if ~exist(outputPath, 'dir')
+        mkdir(outputPath);
+    end
+    
+    save(fullfile(outputPath, getRandomFilename(8)), 'snippet');
+end
+
 end
 
