@@ -70,6 +70,11 @@ end
 stim = stim(selectedStim);
 stimNSamples = stimNSamples(selectedStim);
 
+outputPath = fullfile('./templates');
+if ~exist(outputPath, 'dir')
+    mkdir(outputPath);
+end
+
 outputPath = fullfile('./templates', strcat(tankObj.Name, '_', animalObj.Name ,'_B', num2str(blockIdx), '_C', num2str(channelIdx)));
 if ~exist(outputPath, 'dir')
     mkdir(outputPath);
