@@ -58,7 +58,7 @@ baselineList = dir(fullfile('./baselines'));
 baselineList = baselineList(3:end);
 
 baselineIdx = randi([1, length(baselineList)]);
-fprintf('Selected template: %s\n', baselineList(baselineIdx).name);
+fprintf('Selected baseline: %s\n', baselineList(baselineIdx).name);
 
 load(fullfile(baselineList(baselineIdx).folder, baselineList(baselineIdx).name), 'baseline');
 
