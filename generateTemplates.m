@@ -103,6 +103,7 @@ if graphicsObj ~= false
     hold('on');
     title(channelIdx);
     xlabel('Time (ms)');
+    ylabel('Voltage (\mu{V})');
 end
 
 if nTemplates == false
