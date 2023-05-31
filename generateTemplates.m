@@ -1,10 +1,14 @@
-function generateTemplates(tankObj, animalName, blockIdx, channelIdx, nTemplates, graphicsObj)
+function generateTemplates(data, stim, sampleRate, blankingNSamples, nTemplates, graphicsObj)
 %GENERATETEMPLATES Summary of this function goes here
 %   Detailed explanation goes here
 
 %% Check input parameters
+if nargin < 3
+    throw(MException('SFA:NotEnoughParameters', 'The parameters data, stim and sampleRate are required.'));
+end
+
 if nargin < 4
-    throw(MException('SFA:NotEnoughParameters', 'The parameters tankObj, animalName, blockIdx and channelIdx are required.'));
+    blankingNSamples = 20;
 end
 
 if nargin < 5
@@ -19,22 +23,10 @@ if ~isgraphics(graphicsObj, 'figure') && ~isgraphics(graphicsObj, 'tiledlayout')
     throw(MException('SFA:WrongTypeParameter', 'The parameter graphicsObj is not a figure, a tiledlayout or axes.'));
 end
 
-%% Retrieve Animal, Block and Channel objects
-animalObj = getChildObj(tankObj, animalName);
-blockObj = getChildObj(animalObj, blockIdx);
-
-data = blockObj{'raw', channelIdx, :};
-data = data{1};
-
-%% Load and process stimulation data
-[stim, blankingNSamples] = getStim(blockObj);
-blankingNSamples = blankingNSamples + 5; % Arbitrary increase in the computed blanking window
-
-stim = round(stim * blockObj.SampleRate);
 IAI = getIEI(stim);
 
 %% Compute the baseline
-[~, baselinePercentiles] = getBaselineFromStim(data, stim, blockObj.SampleRate, 10e-3, 0.5e-3, [25, 75]);
+[~, baselinePercentiles] = getBaselineFromStim(data, stim, sampleRate, 10e-3, 0.5e-3, [25, 75]);
 baselineBottom = baselinePercentiles(1);
 baselineTop = baselinePercentiles(end);
 
@@ -43,7 +35,7 @@ selectedStim = false(1, length(stim));
 stimNSamples = zeros(1, length(stim));
 
 searchingWindow = 3e-3;
-searchingSamples = 1:round(searchingWindow * blockObj.SampleRate);
+searchingSamples = 1:round(searchingWindow * sampleRate);
 
 for idx=1:length(stim)-1
     flag = false;
@@ -75,7 +67,7 @@ if ~exist(outputPath, 'dir')
     mkdir(outputPath);
 end
 
-outputPath = fullfile('./templates', strcat(tankObj.Name, '_', animalObj.Name ,'_B', num2str(blockIdx), '_C', num2str(channelIdx)));
+outputPath = fullfile('./templates', string(DataHash(data)));
 if ~exist(outputPath, 'dir')
     mkdir(outputPath);
 end
@@ -101,7 +93,6 @@ if graphicsObj ~= false
     end
     
     hold('on');
-    title(channelIdx);
     xlabel('Time (ms)');
     ylabel('Voltage (\mu{V})');
 end
@@ -117,7 +108,7 @@ for idx=1:nTemplates
     template = data(stimSamples);
     template((paddingBefore+stimNSamples(idx))+1:end) = flip(template(((paddingBefore+stimNSamples(idx))+1:end) - paddingAfter));
     
-    smoothedTemplate = lowpass(template, smoothingFrequency, blockObj.SampleRate);
+    smoothedTemplate = lowpass(template, smoothingFrequency, sampleRate);
     smoothedTemplate = smoothedTemplate((1:stimNSamples(idx)) + paddingBefore);
     
     stimSamples = 1:stimNSamples(idx);
@@ -129,7 +120,7 @@ for idx=1:nTemplates
     template((blankingNSamples + 1):end) = template((blankingNSamples + 1):end) .* hm';
     
     if graphicsObj ~= false
-        plot((0:1/blockObj.SampleRate:(stimSamples(end)/blockObj.SampleRate - 1/blockObj.SampleRate))*1e3, template);
+        plot((0:1/sampleRate:(stimSamples(end)/sampleRate - 1/sampleRate))*1e3, template);
     end
     
     save(fullfile(outputPath, getRandomFilename(8)), 'template');
@@ -139,7 +130,7 @@ if graphicsObj ~= false
     t0 = 0;
     y = ylim;
     y0 = y(1);
-    t1 = max(blankingNSamples) / blockObj.SampleRate * 1e3;
+    t1 = max(blankingNSamples) / sampleRate * 1e3;
     y1 = y(2);
     patch([t0, t1, t1, t0], [y0, y0, y1, y1], [0.8, 0.8, 0.8], 'FaceAlpha', 0.35, 'LineStyle', 'none');
 end

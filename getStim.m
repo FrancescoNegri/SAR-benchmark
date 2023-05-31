@@ -14,5 +14,6 @@ if length(stimChannelId) > 1
 end
 
 stim = stim(stim(:, 2) == stimChannelId, 4);
+stim = round(stim * blockObj.SampleRate);
 end
 
