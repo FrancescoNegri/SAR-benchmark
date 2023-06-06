@@ -87,7 +87,7 @@ if ~exist(outputPath, 'dir')
 end
 
 %% Save the snippet
-snippet = struct('data', snippet, 'baseline', baseline, 'stim', snippetStim);
+snippet = struct('data', snippet, 'baseline', baseline, 'stim', snippetStim, 'sampleRate', sampleRate);
 
 choice = questdlg('Do you want to save the current snippet?', 'Saving', 'Yes', 'No', 'Yes');
 
