@@ -1,8 +1,6 @@
 algorithms/
-snippets/
-baselines/
-templates/
-figures/
+dataset/
+results/
 docs/*
 !docs/*.tex
 *.asv

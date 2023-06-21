@@ -1,4 +1,4 @@
-function generateTemplates(data, stim, sampleRate, blankingNSamples, nTemplates, graphicsObj)
+function extractTemplates(data, stim, sampleRate, blankingNSamples, nTemplates, graphicsObj)
 %GENERATETEMPLATES Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -8,7 +8,7 @@ if nargin < 3
 end
 
 if nargin < 4
-    blankingNSamples = 20;
+    blankingNSamples = ones(size(stim.Onset)) * (sampleRate * 1e-3);
 end
 
 if nargin < 5
@@ -23,26 +23,47 @@ if ~isgraphics(graphicsObj, 'figure') && ~isgraphics(graphicsObj, 'tiledlayout')
     throw(MException('SFA:WrongTypeParameter', 'The parameter graphicsObj is not a figure, a tiledlayout or axes.'));
 end
 
-IAI = getIEI(stim);
-
 %% Compute the baseline
-[~, baselinePercentiles] = getBaselineFromStim(data, stim, sampleRate, 10e-3, 0.5e-3, [25, 75]);
+[~, baselinePercentiles] = getBaselineFromStim(data, stim.Onset, sampleRate, 10e-3, 0.5e-3, [25, 75]);
 baselineBottom = baselinePercentiles(1);
 baselineTop = baselinePercentiles(end);
 
+%% Compute the Inter-Stimulus-Interval
+ISI = getIEI(stim.Onset);
+
+%% Save original stimuli and info
+outputPath = fullfile('./dataset/templates', string(DataHash(data)));
+if ~exist(outputPath, 'dir')
+    mkdir(outputPath);
+end
+
+if iscolumn(stim.Onset)
+    stim.Onset = stim.Onset';
+end
+save(fullfile(outputPath, '.stim.mat'), 'stim');
+
+info = struct('sampleRate', sampleRate);
+save(fullfile(outputPath, '.info.mat'), 'info');
+
+%% Perform random stimuli permutation
+stim.Onset = stim.Onset(1:(end-1)); % Remove the last stimulus as it has no ISI
+permIdxs = randperm(length(stim.Onset));
+
 %% Compute duration for each stimulus
-selectedStim = false(1, length(stim));
-stimNSamples = zeros(1, length(stim));
+stimNSamples = zeros(1, length(stim.Onset));
+selectedIdxs = false(1, length(stim.Onset));
 
 searchingWindow = 3e-3;
 searchingSamples = 1:round(searchingWindow * sampleRate);
 
-for idx=1:length(stim)-1
+idx = 1;
+
+while length(selectedIdxs(selectedIdxs ~= 0)) < nTemplates
     flag = false;
-    searchingOffset = blankingNSamples(idx);
+    searchingOffset = blankingNSamples(permIdxs(idx));
     
     while flag == false
-        searchingVector = data(stim(idx) + searchingSamples - 1 + searchingOffset);
+        searchingVector = data(stim.Onset(permIdxs(idx)) + searchingSamples - 1 + searchingOffset);
         
         if median(searchingVector) > baselineBottom && median(searchingVector) < baselineTop
             flag = true;
@@ -53,35 +74,22 @@ for idx=1:length(stim)-1
     
     searchingOffset = searchingOffset + length(searchingSamples);
     
-    if searchingOffset < IAI(idx)
-        selectedStim(idx) = true;
+    if searchingOffset < ISI(permIdxs(idx))
         stimNSamples(idx) = searchingOffset;
+        selectedIdxs(idx) = true;
     end
+
+    idx = idx + 1;
 end
 
-stim = stim(selectedStim);
-stimNSamples = stimNSamples(selectedStim);
-
-outputPath = fullfile('./templates');
-if ~exist(outputPath, 'dir')
-    mkdir(outputPath);
-end
-
-outputPath = fullfile('./templates', string(DataHash(data)));
-if ~exist(outputPath, 'dir')
-    mkdir(outputPath);
-end
-
-save(fullfile(outputPath, '.stim.mat'), 'stim');
+stim.Onset = stim.Onset(permIdxs(selectedIdxs));
+stimNSamples = stimNSamples(selectedIdxs);
+ISI = ISI(permIdxs(selectedIdxs));
 
 %% Isolate, smooth, plot and save templates
 paddingBefore = 100;
-paddingAfter = 100;
-smoothingFrequency = 100;
-
-permIdxs = randperm(length(stim));
-stim = stim(permIdxs);
-stimNSamples = stimNSamples(permIdxs);
+paddingAfter = 25;
+smoothingFrequency = 0.1;
 
 if graphicsObj ~= false
     if graphicsObj == true
@@ -98,13 +106,13 @@ if graphicsObj ~= false
 end
 
 if nTemplates == false
-    nTemplates = length(stim);
+    nTemplates = length(stim.Onset);
 end
 
 for idx=1:nTemplates
     stimSamples = (1:(paddingBefore+stimNSamples(idx)+paddingAfter)) - paddingBefore;
     
-    stimSamples = stim(idx) + stimSamples - 1;
+    stimSamples = stim.Onset(idx) + stimSamples - 1;
     template = data(stimSamples);
     template((paddingBefore+stimNSamples(idx))+1:end) = flip(template(((paddingBefore+stimNSamples(idx))+1:end) - paddingAfter));
     

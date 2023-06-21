@@ -13,7 +13,14 @@ if length(stimChannelId) > 1
     warning('SFA:MultipleStimulatedChannels', 'There are multiple channels which are stimulated. Selected channel: %d', stimChannelId);
 end
 
-stim = stim(stim(:, 2) == stimChannelId, 4);
-stim = round(stim * blockObj.SampleRate);
-end
+stimDuration = stim(stim(:, 2) == stimChannelId, 6);
+stimDuration = round(stimDuration * blockObj.SampleRate);
 
+stimOn = stim(stim(:, 2) == stimChannelId, 4);
+stimOn = round(stimOn * blockObj.SampleRate);
+
+stimOff = stimOn + stimDuration;
+
+stim = struct('Onset', stimOn', 'Offset', stimOff');
+
+end
