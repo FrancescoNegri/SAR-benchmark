@@ -1,4 +1,4 @@
-function extractTemplates(data, stim, sampleRate, blankingNSamples, nTemplates, graphicsObj)
+function extractTemplates(data, stim, sampleRate, graphicsObj)
 %GENERATETEMPLATES Summary of this function goes here
 %   Detailed explanation goes here
 
@@ -8,14 +8,6 @@ if nargin < 3
 end
 
 if nargin < 4
-    blankingNSamples = ones(size(stim.Onset)) * (sampleRate * 1e-3);
-end
-
-if nargin < 5
-    nTemplates = false;
-end
-
-if nargin < 6
     graphicsObj = false;
 end
 
@@ -23,74 +15,100 @@ if ~isgraphics(graphicsObj, 'figure') && ~isgraphics(graphicsObj, 'tiledlayout')
     throw(MException('SFA:WrongTypeParameter', 'The parameter graphicsObj is not a figure, a tiledlayout or axes.'));
 end
 
-%% Compute the baseline
-[~, baselinePercentiles] = getBaselineFromStim(data, stim.Onset, sampleRate, 10e-3, 0.5e-3, [25, 75]);
-baselineBottom = baselinePercentiles(1);
-baselineTop = baselinePercentiles(end);
+%% Remove the last artifact to avoid issues
+stim.Onset = stim.Onset(1:(end-1));
+if isrow(stim.Onset)
+    stim.Onset = stim.Onset';
+end
 
 %% Compute the Inter-Stimulus-Interval
 ISI = getIEI(stim.Onset);
+artifactSamples = repmat(1:min(ISI), numel(stim), 1) + stim.Onset - 1;
+artifacts = data(artifactSamples);
 
-%% Save original stimuli and info
-outputPath = fullfile('./dataset/templates', string(DataHash(data)));
-if ~exist(outputPath, 'dir')
-    mkdir(outputPath);
+figure();
+plot(artifacts(1:1000, :)');
+set(gcf,'Visible','on');
+uiwait(gcf);
+
+%% Project to 2D space with t-SNE
+clusteringArtifactDuration = 8e-3;
+clusteringArtifactNSamples = round(clusteringArtifactDuration * sampleRate);
+fprintf('Computing t-SNE...');
+rng(0);
+features = tsne(artifacts(:, 1:clusteringArtifactNSamples), 'NumDimensions', 2);
+fprintf(' Done\n');
+
+%% Cluster with DBSCAN
+params = struct();
+params.minClusterSize = 50;
+params.minpts = 50;
+params.epsilon =  3.5;
+
+fprintf('Finding clusters...');
+[labels, metrics] = clusterFeatures(features, params);
+fprintf('\b Done\n');
+
+
+%% Extract templates
+% TODO: salva media e mediana, calcola la varianza e sul primo picco serio
+% di varianza (percentile?) dal fondo appiccica la media fino alla fine.
+
+% NO: le distorsioni si applicano caso per caso alla generazione dello snippet!
+% In seguito determina la zona sulla quale giocare per il decadimento (come?
+% Dal picco di varianza precedentemente trovato?) e poi applicare un
+% decadimento a zero pi o meno veloce (comunque non troppo veloce).
+% Distorcere anche l'ampiezza tramite moltiplicazione per 1.1x con x
+% trovato randomicamente (gestire il clipping).
+fprintf('Computing templates...');
+groups = cell(metrics.nAcceptedClusters, 1);
+
+for idx = 1:metrics.nAcceptedClusters
+    groups{idx} = artifacts(labels.all == labels.accepted(idx), :);
 end
 
-if iscolumn(stim.Onset)
-    stim.Onset = stim.Onset';
+medians = arrayfun(@(group) median(group{:}, 1), groups, 'UniformOutput', false);
+medians = vertcat(medians{:});
+% means = arrayfun(@(group) mean(group{:}, 1), groups, 'UniformOutput', false);
+% means = vertcat(means{:});
+variabilities = arrayfun(@(group) var(group{:}, 1), groups, 'UniformOutput', false);
+variabilities = vertcat(variabilities{:});
+
+templates = medians;
+
+for idx = 1:size(templates, 1)
+    % LPF median
+    paddingNSamples = 50;
+    filteredMedian = lowpass([medians(idx, :), flip(medians(idx, (end - paddingNSamples + 1):end))], 0.1, sampleRate);
+    filteredMedian = filteredMedian(1:(end - paddingNSamples));
+
+    % Find correctionIdx
+    derivative = diff(variabilities(idx, :));
+    derivative = smoothdata(derivative, 'SmoothingFactor', 0.9);
+    threhsold = mean(abs(derivative));
+    derivative(derivative < 0) = 0;
+    idxs = find(derivative > threhsold);
+    correctionIdx = max(idxs([true, diff(idxs) ~= 1]));
+
+    % Refine correctionIdx to minimize error
+    error = abs(medians(idx, :) - filteredMedian);
+    correctionIdx = find(error(correctionIdx:end) <= prctile(error(correctionIdx:end), 1), 1) + correctionIdx - 1;
+
+    % Correct template
+    templates(idx, correctionIdx:end) = filteredMedian(correctionIdx:end);
+    % figure()
+    % plot(templates(idx, :));
+    % hold('on');
+    % plot(templates(idx,:) - medians(idx, :));
+    % set(gcf,'Visible','on');
+    % uiwait(gcf);
 end
-save(fullfile(outputPath, '.stim.mat'), 'stim');
+fprintf(' Done\n');
 
-info = struct('sampleRate', sampleRate);
-save(fullfile(outputPath, '.info.mat'), 'info');
+%% Plot templates and ask for confirmation
+choice = confirmTemplates(templates, features, labels, sampleRate);
 
-%% Perform random stimuli permutation
-stim.Onset = stim.Onset(1:(end-1)); % Remove the last stimulus as it has no ISI
-permIdxs = randperm(length(stim.Onset));
-
-%% Compute duration for each stimulus
-stimNSamples = zeros(1, length(stim.Onset));
-selectedIdxs = false(1, length(stim.Onset));
-
-searchingWindow = 3e-3;
-searchingSamples = 1:round(searchingWindow * sampleRate);
-
-idx = 1;
-
-while length(selectedIdxs(selectedIdxs ~= 0)) < nTemplates
-    flag = false;
-    searchingOffset = blankingNSamples(permIdxs(idx));
-    
-    while flag == false
-        searchingVector = data(stim.Onset(permIdxs(idx)) + searchingSamples - 1 + searchingOffset);
-        
-        if median(searchingVector) > baselineBottom && median(searchingVector) < baselineTop
-            flag = true;
-        else
-            searchingOffset = searchingOffset + 1;
-        end
-    end
-    
-    searchingOffset = searchingOffset + length(searchingSamples);
-    
-    if searchingOffset < ISI(permIdxs(idx))
-        stimNSamples(idx) = searchingOffset;
-        selectedIdxs(idx) = true;
-    end
-
-    idx = idx + 1;
-end
-
-stim.Onset = stim.Onset(permIdxs(selectedIdxs));
-stimNSamples = stimNSamples(selectedIdxs);
-ISI = ISI(permIdxs(selectedIdxs));
-
-%% Isolate, smooth, plot and save templates
-paddingBefore = 100;
-paddingAfter = 25;
-smoothingFrequency = 0.1;
-
+%% Plot templates for livescript
 if graphicsObj ~= false
     if graphicsObj == true
         figure();
@@ -100,47 +118,26 @@ if graphicsObj ~= false
         nexttile();
     end
     
-    hold('on');
-    xlabel('Time (ms)');
-    ylabel('Voltage (\mu{V})');
+   plotTemplates(gca(), templates, labels, sampleRate);
 end
 
-if nTemplates == false
-    nTemplates = length(stim.Onset);
-end
+%% Save original stimuli and info
+if choice
+    fprintf('Saving templates...');
 
-for idx=1:nTemplates
-    stimSamples = (1:(paddingBefore+stimNSamples(idx)+paddingAfter)) - paddingBefore;
-    
-    stimSamples = stim.Onset(idx) + stimSamples - 1;
-    template = data(stimSamples);
-    template((paddingBefore+stimNSamples(idx))+1:end) = flip(template(((paddingBefore+stimNSamples(idx))+1:end) - paddingAfter));
-    
-    smoothedTemplate = lowpass(template, smoothingFrequency, sampleRate);
-    smoothedTemplate = smoothedTemplate((1:stimNSamples(idx)) + paddingBefore);
-    
-    stimSamples = 1:stimNSamples(idx);
-    smoothedTemplate(1:blankingNSamples) = template((1:blankingNSamples) + paddingBefore);    % Restore the stimulation shape, preserving the smoothed artifact
-    template = smoothedTemplate;
-    
-    hm = hamming(2*(length(template) - blankingNSamples(idx)));
-    hm = hm((end/2 + 1):end);
-    template((blankingNSamples + 1):end) = template((blankingNSamples + 1):end) .* hm';
-    
-    if graphicsObj ~= false
-        plot((0:1/sampleRate:(stimSamples(end)/sampleRate - 1/sampleRate))*1e3, template);
+    outputPath = fullfile('./dataset/templates');
+    if ~exist(outputPath, 'dir')
+        mkdir(outputPath);
     end
-    
-    save(fullfile(outputPath, getRandomFilename(8)), 'template');
+
+    fileName =  strcat(string(DataHash(data)), '.mat');
+
+    save(fullfile(outputPath, fileName), 'templates', 'sampleRate', 'stim');
+
+    fprintf(' Done\n');
+else
+    fprintf('Aborted.\n');
 end
 
-if graphicsObj ~= false
-    t0 = 0;
-    y = ylim;
-    y0 = y(1);
-    t1 = max(blankingNSamples) / sampleRate * 1e3;
-    y1 = y(2);
-    patch([t0, t1, t1, t0], [y0, y0, y1, y1], [0.8, 0.8, 0.8], 'FaceAlpha', 0.35, 'LineStyle', 'none');
-end
 end
 

@@ -20,23 +20,17 @@ if ~isgraphics(graphicsObj, 'figure') && ~isgraphics(graphicsObj, 'tiledlayout')
 end
 
 %% Pick a random template folder and load the stimulation file
-dirList = dir(fullfile('./dataset/templates'));
-dirList = dirList(3:end);
+filesList = dir(fullfile('./dataset/templates'));
+filesList = filesList(3:end);
 
-dirIdx = randi([1, length(dirList)]);
-folder = fullfile(dirList(dirIdx).folder, dirList(dirIdx).name);
-fprintf('Selected templates folder: %s\n', dirList(dirIdx).name);
+fileIdx = randi([1, length(filesList)]);
+fprintf('Selected templates: %s\n', filesList(fileIdx).name);
 
-templateList = dir(fullfile(folder));
-templateList = templateList(5:end);     % Avoid .info.mat and .stim.mat files
+load(fullfile(filesList(fileIdx).folder, filesList(fileIdx).name), 'templates', 'sampleRate', 'stim');
 
-load(fullfile(folder, '.stim.mat'), 'stim');
 if ~iscolumn(stim.Onset)
     stim.Onset = stim.Onset';
 end
-
-load(fullfile(folder, '.info.mat'), 'info');
-sampleRate = info.sampleRate;
 
 %% Generate the stimulation train according to the original distribution of stimuli
 IAI = getIEI(stim.Onset);
@@ -70,11 +64,22 @@ snippetStim(diff(snippetStim) < minIAI) = [];   % Remove stimuli below minIAI
 snippetStim = snippetStim(2:end-1);             % Remove first and last stimuli
 
 %% Load a random template for each stimulus
-for idx = 1:length(snippetStim)
-    templateIdx = randi([1, length(templateList)]);
-    load(fullfile(folder, templateList(templateIdx).name), 'template');
-    
-    snippet((1:length(template)) + snippetStim(idx)) = template;
+templateIdxs = randi(size(templates, 1), 1, numel(snippetStim));
+
+startDecayIdxs = randi(round(size(templates, 2) / 3), 1, numel(snippetStim)) + round(sampleRate / 1e3);
+endDecayIdxs = randi(round(size(templates, 2) / 3), 1, numel(snippetStim)) + round(size(templates, 2) * 2/3) - 1;
+% TODO: valutare se introdurre componenti in bassa frequenza da baseline
+% non filtrata
+
+for idx = 1:numel(snippetStim)
+    template = templates(templateIdxs(idx), :);
+    distortion = horzcat(ones(1, startDecayIdxs(idx) - 1), ...
+       linspace(1, 0, endDecayIdxs(idx) - startDecayIdxs(idx) + 1), ...
+       zeros(1, length(template) - endDecayIdxs(idx)));
+
+    template = template .* distortion;
+
+    snippet((1:length(template)) + snippetStim(idx) - 1) = template;
 end
 
 %% Pick a random baseline signal load it
