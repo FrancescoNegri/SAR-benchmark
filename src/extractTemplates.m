@@ -51,15 +51,6 @@ fprintf('\b Done\n');
 
 
 %% Extract templates
-% TODO: salva media e mediana, calcola la varianza e sul primo picco serio
-% di varianza (percentile?) dal fondo appiccica la media fino alla fine.
-
-% NO: le distorsioni si applicano caso per caso alla generazione dello snippet!
-% In seguito determina la zona sulla quale giocare per il decadimento (come?
-% Dal picco di varianza precedentemente trovato?) e poi applicare un
-% decadimento a zero pi o meno veloce (comunque non troppo veloce).
-% Distorcere anche l'ampiezza tramite moltiplicazione per 1.1x con x
-% trovato randomicamente (gestire il clipping).
 fprintf('Computing templates...');
 groups = cell(metrics.nAcceptedClusters, 1);
 
@@ -69,8 +60,6 @@ end
 
 medians = arrayfun(@(group) median(group{:}, 1), groups, 'UniformOutput', false);
 medians = vertcat(medians{:});
-% means = arrayfun(@(group) mean(group{:}, 1), groups, 'UniformOutput', false);
-% means = vertcat(means{:});
 variabilities = arrayfun(@(group) var(group{:}, 1), groups, 'UniformOutput', false);
 variabilities = vertcat(variabilities{:});
 
