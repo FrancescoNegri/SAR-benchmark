@@ -26,16 +26,30 @@ ISI = getIEI(stim.Onset);
 artifactSamples = repmat(1:min(ISI), numel(stim), 1) + stim.Onset - 1;
 artifacts = data(artifactSamples);
 
+displayedArtifacts = artifacts(randsample(size(artifacts, 1), 500), :);
 figure();
-plot(artifacts(1:1000, :)');
+hold('on');
+t = repmat(0:1/sampleRate:((size(displayedArtifacts, 2) / sampleRate) - 1/sampleRate), size(displayedArtifacts, 1), 1) .* 1e3;
+blankingPeriod = 1e-3;
+plot(t', displayedArtifacts');
+if ~isempty(blankingPeriod)
+    patch(gca(), [0, blankingPeriod, blankingPeriod, 0] * 1e3, [min(gca().YTick), min(gca().YTick), max(gca().YTick), max(gca().YTick)], 'black', 'FaceAlpha', 0.3, 'LineStyle', 'none');
+end
 set(gcf,'Visible','on');
 uiwait(gcf);
+
+choice = questdlg('Do you want to proceed?', 'Templates Extraction', 'Yes', 'No', 'Yes');
+
+if strcmp(choice, 'No')
+    fprintf('Aborted.\n');
+    return;
+end
 
 %% Project to 2D space with t-SNE
 clusteringArtifactDuration = 8e-3;
 clusteringArtifactNSamples = round(clusteringArtifactDuration * sampleRate);
 fprintf('Computing t-SNE...');
-rng(0);
+rng(24);
 features = tsne(artifacts(:, 1:clusteringArtifactNSamples), 'NumDimensions', 2);
 fprintf(' Done\n');
 
@@ -127,6 +141,8 @@ if choice
 else
     fprintf('Aborted.\n');
 end
+
+rng('default');
 
 end
 
