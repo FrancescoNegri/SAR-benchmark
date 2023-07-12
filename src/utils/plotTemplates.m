@@ -12,6 +12,8 @@ function plotTemplates(varargin)
         sampleRate = varargin{3};
     end
 
+    blankingPeriod = 1e-3;
+
     cla(ax, 'reset');
     hold(ax, 'on');
     title(ax, 'Templates')
@@ -23,6 +25,10 @@ function plotTemplates(varargin)
     for idx = 1:size(templates, 1)
         colorIdx = labels.accepted(idx);
         plot(ax, t * 1e3, templates(idx, :), 'Color', labels.colors(colorIdx, :));
+    end
+
+    if ~isempty(blankingPeriod)
+        patch(ax, [0, blankingPeriod, blankingPeriod, 0] * 1e3, [min(ax.YTick), min(ax.YTick), max(ax.YTick), max(ax.YTick)], [0.8, 0.8, 0.8], 'FaceAlpha', 0.3, 'LineStyle', 'none');
     end
 end
 
