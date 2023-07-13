@@ -17,7 +17,8 @@ end
 
 load(fullfile(path), 'data');
 
-data = bandpass(data, [300, 7000], sampleRate);
+BPF = [300, 700];
+data = bandpass(data, BPF, sampleRate);
 
 t = 0:1/sampleRate:(length(data)/sampleRate - 1/sampleRate);
 
@@ -147,6 +148,7 @@ if ~isempty(baseline)
         baseline.SD = struct();
         baseline.SD.spikeTrain = baselineSpikes;
         baseline.SD.params = params;
+        baseline.BPF = BPF;
 
         save(fullfile(outputPath, getRandomFilename(8)), 'baseline');
     end

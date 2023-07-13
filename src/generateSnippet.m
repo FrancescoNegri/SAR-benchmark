@@ -133,6 +133,7 @@ if strcmp(choice, 'Yes')
     snippet.stim = snippetStim;
     snippet.sampleRate = sampleRate;
     snippet.SD = baseline.SD;
+    snippet.BPF = baseline.BPF;
 
     save(fullfile(outputPath, getRandomFilename(8)), 'snippet');
 end
