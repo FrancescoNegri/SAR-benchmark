@@ -55,6 +55,7 @@ while strcmp(choice, 'Retry')
         plot(t, data);
         plot(t, limits(1) * ones(size(data)), 'Color', 'r');
         plot(t, limits(2) * ones(size(data)), 'Color', 'r');
+        ylim([-1000, 1000]);
         hold('off');
     end
     
@@ -69,7 +70,7 @@ end
 baselineNSamples = round(baselineDuration * sampleRate);
 
 idxs = 1:length(data);
-badIdxs = idxs(data < limits(1) | data > limits(2));
+badIdxs = unique([idxs(data < limits(1) | data > limits(2)), length(data)]);
 goodIdx = badIdxs(find(diff(badIdxs) >= baselineNSamples, 1)) + 1;
 
 if isempty(goodIdx)
