@@ -88,39 +88,30 @@ if ~isempty(baseline) && graphicsObj ~= false
 end
 
 if ~isempty(baseline)
-    pars = struct();
-    pars.fs = sampleRate;
-    pars.FilterLength   = 60;   % [ms] Length of the adaptive filter window
-    pars.Polarity       = -1;   % polarity of the detection. If positive looks for positive crossings. Negative otherwise. 
-    pars.MinThresh      = 35;   % [uV] Fixed minimum voltage threshold for detection;
-    pars.MultCoeff      = 4.5;  % moltiplicative factor for the adaptive threshold (signal absolute median);
-    pars.RefrTime       = 2;  % [ms] Refractory time. 
-    pars.PeakDur        =  1;   % [ms] Peak duration or pulse lifetime period
+    params = SD_SWTTEO_Params();
+    params.fs = sampleRate;
 
     choice = 'Retry';
 
     while strcmp(choice, 'Retry')
-        prompt = {'FilterLength', 'Polarity', 'MinThresh', 'MultCoeff', 'RefrTime', 'PeakDur'};
+        prompt = {'RefrTime', 'MultCoeff', 'Polarity', 'PeakDur'};
         dlgtitle = 'SD Parameters';
         dims = [1, 35];
-        definput = {num2str(pars.FilterLength), num2str(pars.Polarity),...
-            num2str(pars.MinThresh), num2str(pars.MultCoeff),...
-            num2str(pars.RefrTime), num2str(pars.PeakDur)};
+        definput = struct2cell(params);
+        definput = definput(ismember(fieldnames(params), prompt));
+        definput = arrayfun(@(value) num2str(value{:}), definput, 'UniformOutput', false);
         answer = inputdlg(prompt, dlgtitle, dims, definput);
 
         if isempty(answer)
             disp('Aborted.');
             return;
         end
-
-        pars.FilterLength   = str2double(answer{1});
-        pars.Polarity       = str2double(answer{2});
-        pars.MinThresh      = str2double(answer{3});
-        pars.MultCoeff      = str2double(answer{4});
-        pars.RefrTime       = str2double(answer{5});
-        pars.PeakDur        = str2double(answer{6});
-
-        [baselineSpikesIdxs, ~, ~, ~] = SD_AdaptThresh(baseline, pars);
+        
+        for idx = 1:numel(prompt)
+            params.(prompt{idx}) = str2double(answer{idx});
+        end
+        
+        [baselineSpikesIdxs, ~, ~, ~] = SD_SWTTEO(baseline, params);
         baselineSpikes = false(size(baseline));
         baselineSpikes(baselineSpikesIdxs) = true;
         
@@ -154,7 +145,7 @@ if ~isempty(baseline)
         baseline.sampleRate = sampleRate;
         baseline.SD = struct();
         baseline.SD.spikeTrain = baselineSpikes;
-        baseline.SD.params = pars;
+        baseline.SD.params = params;
 
         save(fullfile(outputPath, getRandomFilename(8)), 'baseline');
     end
